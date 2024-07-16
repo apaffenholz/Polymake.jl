@@ -51,17 +51,58 @@ Connect to the `polyDB` and return `Database` instance.
 The uri of the server can be set in advance by writing its `String` representation
 into ENV["POLYDB_TEST_URI"].
 (used to connect to the github services container for testing)
+
+Tou can also set connection parameters via options:
+host,port,user,password for basic details about the server,
+you may set one or all of ssl,tlsAllowInvalidHostnames,tlsAllowInvalidCertificates to false 
+if you connect through an ssh tunnel or similar and the connection 
+thus hostname or server certificate differ at server side
+
 # Examples
 ```julia-repl
 julia> db = Polymake.Polydb.get_db();
 
 julia> typeof(db)
 Polymake.Polydb.Database
+
+julia> db = Polymake.Polydb.get_db(host="db.polymake.org", port=27017, user="polymake", password="database", ssl=true, tlsAllowInvalidCertificates=false, tlsAllowInvalidHostnames=false);
+
+julia> typeof(db)
+Polymake.Polydb.Database
+
 ```
 """
-function get_db()
-   # we explicitly set the cacert file, otherwise we might get connection errors because the certificate cannot be validated
-   client = Mongoc.Client(get(ENV, "POLYDB_TEST_URI", "mongodb://polymake:database@db.polymake.org/?authSource=admin&ssl=true&sslCertificateAuthorityFile=$(NetworkOptions.ca_roots_path())"))
+function get_db(;
+   host::String = "db.polymake.org",
+   port::Int = 27017,
+   ssl::Bool = true,
+   tlsAllowInvalidHostnames::Bool = false,
+   tlsAllowInvalidCertificates::Bool = false,
+   user::String = "polymake",
+   password::String = "database"
+)
+
+   # if uri is defined in POLYDB_TEST_URI then use this one
+   uri = get(ENV, "POLYDB_TEST_URI", nothing)
+
+   # otherwise build it from the options
+   if ( isnothing(uri) )
+      uri = "mongodb://" * user * ":" * password * "@" * host * ":" * string(port) * "/?authSource=admin"
+
+      if ssl
+         # if ssl is used, then we explicitly set the cacert file, otherwise we might get connection errors because the certificate cannot be validated
+         uri *= "&ssl=true&sslCertificateAuthorityFile="*NetworkOptions.ca_roots_path()
+      end
+
+      if tlsAllowInvalidCertificates
+         uri *= "&tlsAllowInvalidCertificates=true"
+      end
+      if tlsAllowInvalidHostnames
+         uri *= "&tlsAllowInvalidHostnames=true"
+      end
+   end
+
+   client = Mongoc.Client(uri)
    return Database(client["polydb"])
 end
 
